@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { PageLoadingState } from '@/components/LoadingState';
-import { fetchListing, buildRentAccessTx, calculateRentalPrice, formatSui, suiToMist } from '@/lib/sui';
+import { fetchListing, calculateRentalPrice, formatSui } from '@/lib/sui';
 import { DURATION_OPTIONS } from '@/lib/constants';
-import { useAppStore } from '@/stores/appStore';
 import type { Listing } from '@/lib/types';
 import { 
   ArrowLeft, 
@@ -20,7 +19,8 @@ import {
   File,
   Loader2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
 
 function getMimeIcon(mimeType: string) {
@@ -33,14 +33,13 @@ function getMimeIcon(mimeType: string) {
 
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>();
-  const account = useCurrentAccount();
-  const { mutate: signAndExecute, isPending: isExecuting } = useSignAndExecuteTransaction();
-  const { rent, setRent, resetRent } = useAppStore();
+  const { isAuthenticated, suiAddress } = useAuthContext();
   
   const [listing, setListing] = useState<Listing | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDuration, setSelectedDuration] = useState(24);
   const [error, setError] = useState<string | null>(null);
+  const [isRenting, setIsRenting] = useState(false);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
@@ -60,46 +59,32 @@ export default function ListingDetail() {
     }
 
     loadListing();
-    resetRent();
-  }, [id, resetRent]);
+  }, [id]);
 
   const calculatedPrice = listing 
     ? calculateRentalPrice(listing.basePrice, listing.priceSlope, listing.activeRentals, selectedDuration)
     : BigInt(0);
 
   const handleRent = async () => {
-    if (!account || !listing || !id) return;
+    if (!isAuthenticated || !suiAddress || !listing || !id) return;
 
     setError(null);
-    setSuccess(false);
+    setIsRenting(true);
     
     try {
-      const maxPrice = calculatedPrice + (calculatedPrice * BigInt(10)) / BigInt(100); // 10% slippage
+      // Note: Full zkLogin transaction signing requires ZK proof generation
+      // For MVP, we show that the flow would work but can't complete the transaction
+      // without wallet extension or full zkLogin infrastructure
       
-      const tx = buildRentAccessTx({
-        listingId: id,
-        durationHours: selectedDuration,
-        paymentAmount: calculatedPrice,
-        maxPrice,
-      });
-
-      signAndExecute(
-        { transaction: tx },
-        {
-          onSuccess: (result) => {
-            console.log('Rent successful:', result);
-            setSuccess(true);
-            setRent({ accessPassId: 'pending', step: 'complete' });
-          },
-          onError: (error) => {
-            console.error('Rent failed:', error);
-            setError(error.message || 'Transaction failed');
-          },
-        }
+      setError(
+        'zkLogin transaction signing is not yet fully implemented. ' +
+        'This MVP demonstrates the UI flow. Full implementation requires ZK proof generation.'
       );
-    } catch (error) {
-      console.error('Failed to build transaction:', error);
-      setError('Failed to build transaction');
+    } catch (err) {
+      console.error('Rent failed:', err);
+      setError(err instanceof Error ? err.message : 'Transaction failed');
+    } finally {
+      setIsRenting(false);
     }
   };
 
@@ -276,20 +261,20 @@ export default function ListingDetail() {
                 <div className="mb-4 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
                   <div className="flex items-center gap-2 text-destructive">
                     <AlertCircle className="h-5 w-5" />
-                    <span className="font-medium">Error</span>
+                    <span className="font-medium">Notice</span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">{error}</p>
                 </div>
               )}
 
               {/* Rent Button */}
-              {account ? (
+              {isAuthenticated ? (
                 <button
                   onClick={handleRent}
-                  disabled={isExecuting || !listing.isActive}
+                  disabled={isRenting || !listing.isActive}
                   className="w-full py-3 px-4 rounded-lg bg-primary text-primary-foreground font-mono font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {isExecuting ? (
+                  {isRenting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Processing...
@@ -302,11 +287,13 @@ export default function ListingDetail() {
                   )}
                 </button>
               ) : (
-                <div className="text-center p-4 rounded-lg border border-border bg-muted/50">
-                  <p className="text-sm text-muted-foreground">
-                    Connect your wallet to rent access
-                  </p>
-                </div>
+                <Link
+                  to="/auth/sign-in"
+                  className="flex items-center justify-center gap-2 w-full py-3 px-4 rounded-lg bg-primary text-primary-foreground font-mono font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <Lock className="h-4 w-4" />
+                  Sign in to Rent
+                </Link>
               )}
 
               {!listing.isActive && (

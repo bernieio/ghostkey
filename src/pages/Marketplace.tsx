@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { Link } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { ListingCard } from '@/components/ListingCard';
-import { SkeletonCard, PageLoadingState } from '@/components/LoadingState';
+import { SkeletonCard } from '@/components/LoadingState';
 import { useAppStore } from '@/stores/appStore';
 import { fetchAllListings } from '@/lib/sui';
-import { Search, Grid, Filter, Zap } from 'lucide-react';
+import { Search, Grid, Filter, Zap, Shield } from 'lucide-react';
 
 export default function Marketplace() {
-  const account = useCurrentAccount();
   const { listings, setListings } = useAppStore();
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,14 +44,30 @@ export default function Marketplace() {
         <div className="mb-12 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary font-mono text-sm mb-6">
             <Zap className="h-4 w-4" />
-            Powered by Seal Protocol & Walrus
+            Powered by Seal Protocol & zkLogin
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-4">
             <span className="text-gradient">GhostKey</span> Marketplace
           </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-6">
             Decentralized content with time-limited access. Rent encrypted content secured by on-chain access control.
           </p>
+          
+          {/* Features */}
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-primary" />
+              <span>Seal Encryption</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <span>zkLogin Auth</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Grid className="h-4 w-4 text-primary" />
+              <span>Walrus Storage</span>
+            </div>
+          </div>
         </div>
 
         {/* Search & Filters */}
@@ -104,9 +119,15 @@ export default function Marketplace() {
           <div className="text-center py-20">
             <Grid className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-foreground font-medium mb-2">No listings found</p>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground mb-6">
               {searchQuery ? 'Try a different search term' : 'Be the first to upload content!'}
             </p>
+            <Link
+              to="/upload"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-mono font-medium hover:bg-primary/90 transition-colors"
+            >
+              Upload Content
+            </Link>
           </div>
         )}
       </div>

@@ -1,16 +1,18 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useCurrentAccount, ConnectButton } from '@mysten/dapp-kit';
+import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
+import { useAuthContext } from '@/contexts/AuthContext';
 import logo from '@/assets/phunhuanbuilder-logo.png';
+import { Loader2 } from 'lucide-react';
 
 const navItems = [
-  { path: '/', label: 'Marketplace' },
-  { path: '/upload', label: 'Upload' },
-  { path: '/profile', label: 'Profile' },
+  { path: '/', label: 'Marketplace', protected: false },
+  { path: '/upload', label: 'Upload', protected: true },
+  { path: '/profile', label: 'Profile', protected: true },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const account = useCurrentAccount();
+  const { suiAddress, isLoading } = useAuthContext();
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,16 +46,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ))}
           </div>
 
-          {/* Wallet Connect */}
+          {/* Auth Section */}
           <div className="flex items-center gap-4">
-            {account && (
-              <span className="hidden sm:block font-mono text-xs text-muted-foreground">
-                {account.address.slice(0, 6)}...{account.address.slice(-4)}
-              </span>
-            )}
-            <ConnectButton 
-              connectText="Connect Wallet"
-            />
+            <SignedIn>
+              {/* Show Sui Address */}
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              ) : suiAddress ? (
+                <span className="hidden sm:block font-mono text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                  {suiAddress.slice(0, 8)}...{suiAddress.slice(-6)}
+                </span>
+              ) : null}
+              
+              <UserButton 
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: {
+                    avatarBox: 'w-8 h-8',
+                  },
+                }}
+              />
+            </SignedIn>
+
+            <SignedOut>
+              <Link
+                to="/auth/sign-in"
+                className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-mono text-sm hover:bg-primary/90 transition-colors"
+              >
+                Sign In
+              </Link>
+            </SignedOut>
           </div>
         </div>
       </nav>
@@ -78,7 +100,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="text-primary">•</span>
               <span>Seal Protocol</span>
               <span className="text-primary">•</span>
-              <span>Walrus Storage</span>
+              <span>zkLogin</span>
             </div>
           </div>
         </div>

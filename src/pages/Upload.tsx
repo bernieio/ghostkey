@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { FileUploader } from '@/components/FileUploader';
-import { useAppStore } from '@/stores/appStore';
 import { generateSealId, encryptWithSeal } from '@/lib/seal';
 import { uploadToWalrus } from '@/lib/walrus';
-import { buildCreateListingTx, suiToMist } from '@/lib/sui';
+import { suiToMist } from '@/lib/sui';
 import { 
   Upload as UploadIcon, 
   Shield, 
@@ -15,15 +14,15 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Lock
 } from 'lucide-react';
 
 type Step = 'select' | 'details' | 'encrypting' | 'uploading' | 'listing' | 'complete' | 'error';
 
 export default function Upload() {
   const navigate = useNavigate();
-  const account = useCurrentAccount();
-  const { mutate: signAndExecute, isPending: isExecuting } = useSignAndExecuteTransaction();
+  const { isAuthenticated, suiAddress } = useAuthContext();
   
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -32,7 +31,8 @@ export default function Upload() {
   const [priceSlope, setPriceSlope] = useState('0.01');
   const [step, setStep] = useState<Step>('select');
   const [error, setError] = useState<string | null>(null);
-  const [listingId, setListingId] = useState<string | null>(null);
+  const [blobId, setBlobId] = useState<string | null>(null);
+  const [sealId, setSealId] = useState<string | null>(null);
 
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
@@ -47,53 +47,40 @@ export default function Upload() {
   };
 
   const handleUpload = async () => {
-    if (!file || !account) return;
+    if (!file || !isAuthenticated || !suiAddress) return;
 
     setError(null);
 
     try {
       // Step 1: Generate Seal ID
       setStep('encrypting');
-      const sealId = generateSealId();
+      const generatedSealId = generateSealId();
+      setSealId(generatedSealId);
       
       // Read file content
       const arrayBuffer = await file.arrayBuffer();
       const content = new Uint8Array(arrayBuffer);
       
       // Encrypt with Seal
-      const encryptedContent = await encryptWithSeal(content, sealId);
+      const encryptedContent = await encryptWithSeal(content, generatedSealId);
       
       // Step 2: Upload to Walrus
       setStep('uploading');
-      const blobId = await uploadToWalrus(encryptedContent);
+      const generatedBlobId = await uploadToWalrus(encryptedContent);
+      setBlobId(generatedBlobId);
       
-      // Step 3: Create listing on-chain
+      // Step 3: Create listing on-chain (requires zkLogin transaction)
       setStep('listing');
-      const tx = buildCreateListingTx({
-        blobId,
-        sealId,
-        mimeType: file.type || 'application/octet-stream',
-        title,
-        description,
-        basePrice: suiToMist(basePrice),
-        priceSlope: suiToMist(priceSlope),
-      });
-
-      signAndExecute(
-        { transaction: tx },
-        {
-          onSuccess: (result) => {
-            console.log('Listing created:', result);
-            setListingId(result.digest);
-            setStep('complete');
-          },
-          onError: (err) => {
-            console.error('Failed to create listing:', err);
-            setError(err.message || 'Transaction failed');
-            setStep('error');
-          },
-        }
+      
+      // Note: Full zkLogin transaction signing requires ZK proof generation
+      // For MVP, we show that encryption and upload work but can't complete the listing
+      setError(
+        'Content encrypted and uploaded to Walrus successfully! ' +
+        'On-chain listing creation requires full zkLogin implementation with ZK proofs. ' +
+        `Blob ID: ${generatedBlobId.slice(0, 16)}...`
       );
+      setStep('error');
+      
     } catch (err) {
       console.error('Upload failed:', err);
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -101,7 +88,7 @@ export default function Upload() {
     }
   };
 
-  const isProcessing = step === 'encrypting' || step === 'uploading' || step === 'listing' || isExecuting;
+  const isProcessing = step === 'encrypting' || step === 'uploading' || step === 'listing';
 
   const StepIndicator = ({ currentStep, label, icon: Icon }: { currentStep: Step; label: string; icon: React.ElementType }) => {
     const steps: Step[] = ['select', 'details', 'encrypting', 'uploading', 'listing', 'complete'];
@@ -151,19 +138,25 @@ export default function Upload() {
           <StepIndicator currentStep="listing" label="List" icon={LinkIcon} />
         </div>
 
-        {/* Not Connected */}
-        {!account && (
+        {/* Not Authenticated */}
+        {!isAuthenticated && (
           <div className="text-center p-12 rounded-lg border border-border bg-card">
-            <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-foreground font-medium mb-2">Connect your wallet</p>
-            <p className="text-sm text-muted-foreground">
-              You need to connect your wallet to upload content
+            <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-foreground font-medium mb-2">Sign in required</p>
+            <p className="text-sm text-muted-foreground mb-6">
+              You need to sign in to upload content
             </p>
+            <Link
+              to="/auth/sign-in"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-mono font-medium hover:bg-primary/90 transition-colors"
+            >
+              Sign In
+            </Link>
           </div>
         )}
 
         {/* Main Form */}
-        {account && step !== 'complete' && (
+        {isAuthenticated && step !== 'complete' && (
           <div className="space-y-6">
             {/* File Upload */}
             <div>
@@ -240,14 +233,14 @@ export default function Upload() {
                   </div>
                 </div>
 
-                {/* Error */}
+                {/* Error / Status */}
                 {error && (
-                  <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30">
-                    <div className="flex items-center gap-2 text-destructive">
+                  <div className="p-4 rounded-lg bg-muted border border-border">
+                    <div className="flex items-center gap-2 text-foreground mb-1">
                       <AlertCircle className="h-5 w-5" />
-                      <span className="font-medium">Error</span>
+                      <span className="font-medium">Status</span>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-1">{error}</p>
+                    <p className="text-sm text-muted-foreground">{error}</p>
                   </div>
                 )}
 

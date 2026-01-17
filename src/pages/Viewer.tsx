@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { ContentViewer } from '@/components/ContentViewer';
-import { PageLoadingState } from '@/components/LoadingState';
 import { fetchListing } from '@/lib/sui';
 import { downloadFromWalrus } from '@/lib/walrus';
 import { decryptWithSeal } from '@/lib/seal';
@@ -21,7 +20,7 @@ type ViewerStep = 'loading' | 'downloading' | 'decrypting' | 'ready' | 'error';
 
 export default function Viewer() {
   const { listingId, accessPassId } = useParams<{ listingId: string; accessPassId: string }>();
-  const account = useCurrentAccount();
+  const { isAuthenticated, suiAddress } = useAuthContext();
   
   const [listing, setListing] = useState<Listing | null>(null);
   const [step, setStep] = useState<ViewerStep>('loading');
@@ -30,7 +29,7 @@ export default function Viewer() {
 
   useEffect(() => {
     async function loadAndDecrypt() {
-      if (!listingId || !accessPassId || !account) return;
+      if (!listingId || !accessPassId || !isAuthenticated) return;
 
       setError(null);
 
@@ -63,18 +62,24 @@ export default function Viewer() {
     }
 
     loadAndDecrypt();
-  }, [listingId, accessPassId, account]);
+  }, [listingId, accessPassId, isAuthenticated]);
 
   // Not connected
-  if (!account) {
+  if (!isAuthenticated) {
     return (
       <Layout>
         <div className="container mx-auto px-4 py-20 text-center">
           <Lock className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-foreground font-medium mb-2">Connect your wallet</p>
-          <p className="text-sm text-muted-foreground">
-            You need to connect your wallet to view content
+          <p className="text-foreground font-medium mb-2">Sign in required</p>
+          <p className="text-sm text-muted-foreground mb-6">
+            You need to sign in to view content
           </p>
+          <Link
+            to="/auth/sign-in"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-mono font-medium hover:bg-primary/90 transition-colors"
+          >
+            Sign In
+          </Link>
         </div>
       </Layout>
     );

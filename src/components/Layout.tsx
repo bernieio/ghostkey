@@ -2,13 +2,42 @@ import { Link, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import logo from '@/assets/phunhuanbuilder-logo.png';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Copy, Check } from 'lucide-react';
+import { useState } from 'react';
 
 const navItems = [
   { path: '/', label: 'Marketplace', protected: false },
   { path: '/upload', label: 'Upload', protected: true },
   { path: '/profile', label: 'Profile', protected: true },
 ];
+
+// Wallet address component with copy button
+function WalletAddressWithCopy({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="hidden sm:flex items-center gap-1 font-mono text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+      <span>{address.slice(0, 8)}...{address.slice(-6)}</span>
+      <button
+        onClick={handleCopy}
+        className="p-0.5 hover:text-primary transition-colors"
+        title="Copy address"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-primary" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </button>
+    </div>
+  );
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -49,13 +78,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Auth Section */}
           <div className="flex items-center gap-4">
             <SignedIn>
-              {/* Show Sui Address */}
+              {/* Show Sui Address with Copy Button */}
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               ) : suiAddress ? (
-                <span className="hidden sm:block font-mono text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                  {suiAddress.slice(0, 8)}...{suiAddress.slice(-6)}
-                </span>
+                <WalletAddressWithCopy address={suiAddress} />
               ) : null}
               
               <UserButton 

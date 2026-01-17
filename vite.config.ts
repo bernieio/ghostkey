@@ -31,4 +31,9 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Walrus SDK optimization
+  optimizeDeps: {
+    exclude: ['@mysten/walrus'],
+  },
+  assetsInclude: ['**/*.wasm'],
 }));

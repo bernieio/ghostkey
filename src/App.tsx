@@ -3,8 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
-import { AuthProvider } from '@/contexts/AuthContext';
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider, useAuthContext } from '@/contexts/AuthContext';
+import { AutoFaucetOverlay } from '@/components/AutoFaucetOverlay';
 import Marketplace from "./pages/Marketplace";
 import ListingDetail from "./pages/ListingDetail";
 import Upload from "./pages/Upload";
@@ -34,21 +35,33 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AutoFaucetWrapper({ children }: { children: React.ReactNode }) {
+  const { isLoading, isAutoFauceting } = useAuthContext();
+  return (
+    <>
+      <AutoFaucetOverlay isInitializing={isLoading} isFunding={isAutoFauceting} />
+      {children}
+    </>
+  );
+}
+
 function AppRoutes() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route path="/" element={<PublicRoute><Marketplace /></PublicRoute>} />
-      <Route path="/listing/:id" element={<PublicRoute><ListingDetail /></PublicRoute>} />
-      <Route path="/auth/*" element={<AuthPage />} />
-      
-      {/* Protected routes */}
-      <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
-      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-      <Route path="/viewer/:listingId/:accessPassId" element={<ProtectedRoute><Viewer /></ProtectedRoute>} />
-      
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <AutoFaucetWrapper>
+      <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<PublicRoute><Marketplace /></PublicRoute>} />
+        <Route path="/listing/:id" element={<PublicRoute><ListingDetail /></PublicRoute>} />
+        <Route path="/auth/*" element={<AuthPage />} />
+        
+        {/* Protected routes */}
+        <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
+        <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/viewer/:listingId/:accessPassId" element={<ProtectedRoute><Viewer /></ProtectedRoute>} />
+        
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </AutoFaucetWrapper>
   );
 }
 

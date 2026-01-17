@@ -3,12 +3,13 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { AccessPassCard } from '@/components/AccessPassCard';
 import { SkeletonCard } from '@/components/LoadingState';
+import { FaucetButton } from '@/components/FaucetButton';
 import { useAppStore } from '@/stores/appStore';
-import { fetchUserAccessPasses } from '@/lib/sui';
-import { Key, User, Wallet, Copy, Check, Shield } from 'lucide-react';
+import { fetchUserAccessPasses, formatSui } from '@/lib/sui';
+import { Key, User, Wallet, Copy, Check, Shield, Coins } from 'lucide-react';
 
 export default function Profile() {
-  const { isAuthenticated, suiAddress, userEmail, isLoading: authLoading } = useAuthContext();
+  const { isAuthenticated, suiAddress, suiBalance, userEmail, isLoading: authLoading, refreshBalance } = useAuthContext();
   const { accessPasses, setAccessPasses } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -116,12 +117,38 @@ export default function Profile() {
                 </div>
 
                 {/* Network */}
-                <div className="flex items-center justify-between py-3">
+                <div className="flex items-center justify-between py-3 border-b border-border">
                   <div className="flex items-center gap-3">
                     <Shield className="h-5 w-5 text-muted-foreground" />
                     <span className="text-muted-foreground">Network</span>
                   </div>
                   <span className="font-mono text-sm text-primary">Sui Testnet</span>
+                </div>
+
+                {/* Balance */}
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <Coins className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Balance</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-sm text-foreground">
+                      {authLoading ? 'Loading...' : `${formatSui(suiBalance)} SUI`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Faucet Section */}
+              <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-foreground">Testnet Gas</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Need gas? Request testnet SUI for transactions.
+                    </p>
+                  </div>
+                  <FaucetButton showWhenHasBalance={true} />
                 </div>
               </div>
 

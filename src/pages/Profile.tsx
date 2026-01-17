@@ -1,27 +1,28 @@
 import { useEffect, useState } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { AccessPassCard } from '@/components/AccessPassCard';
-import { SkeletonCard, PageLoadingState } from '@/components/LoadingState';
+import { SkeletonCard } from '@/components/LoadingState';
 import { useAppStore } from '@/stores/appStore';
 import { fetchUserAccessPasses } from '@/lib/sui';
-import { Key, User, Wallet } from 'lucide-react';
+import { Key, User, Wallet, Copy, Check, Shield } from 'lucide-react';
 
 export default function Profile() {
-  const account = useCurrentAccount();
+  const { isAuthenticated, suiAddress, userEmail, isLoading: authLoading } = useAuthContext();
   const { accessPasses, setAccessPasses } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function loadAccessPasses() {
-      if (!account?.address) {
+      if (!suiAddress) {
         setAccessPasses([]);
         return;
       }
 
       setIsLoading(true);
       try {
-        const passes = await fetchUserAccessPasses(account.address);
+        const passes = await fetchUserAccessPasses(suiAddress);
         setAccessPasses(passes);
       } catch (error) {
         console.error('Failed to fetch access passes:', error);
@@ -31,7 +32,15 @@ export default function Profile() {
     }
 
     loadAccessPasses();
-  }, [account?.address, setAccessPasses]);
+  }, [suiAddress, setAccessPasses]);
+
+  const copyAddress = async () => {
+    if (suiAddress) {
+      await navigator.clipboard.writeText(suiAddress);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const activePasses = accessPasses.filter(p => p.expiresAt > Date.now());
   const expiredPasses = accessPasses.filter(p => p.expiresAt <= Date.now());
@@ -43,36 +52,84 @@ export default function Profile() {
         <div className="mb-12">
           <h1 className="text-3xl font-bold text-foreground mb-4">Profile</h1>
           <p className="text-muted-foreground">
-            View and manage your content access
+            Your zkLogin wallet and content access
           </p>
         </div>
 
-        {/* Not Connected */}
-        {!account && (
+        {!isAuthenticated && (
           <div className="text-center p-12 rounded-lg border border-border bg-card">
-            <Wallet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-foreground font-medium mb-2">Connect your wallet</p>
+            <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-foreground font-medium mb-2">Sign in required</p>
             <p className="text-sm text-muted-foreground">
-              Connect your wallet to view your access passes
+              Sign in with Google to access your profile
             </p>
           </div>
         )}
 
-        {/* Connected */}
-        {account && (
+        {isAuthenticated && (
           <div className="space-y-8">
             {/* Wallet Info */}
             <div className="rounded-lg border border-border bg-card p-6">
-              <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <User className="h-6 w-6" />
-                </div>
-                <div>
-                  <span className="block text-sm text-muted-foreground mb-1">Connected Wallet</span>
-                  <span className="font-mono text-foreground">
-                    {account.address.slice(0, 12)}...{account.address.slice(-8)}
+              <h2 className="font-semibold text-foreground mb-6">zkLogin Wallet</h2>
+              
+              <div className="space-y-4">
+                {/* Email */}
+                <div className="flex items-center justify-between py-3 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <User className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Email</span>
+                  </div>
+                  <span className="font-mono text-sm text-foreground">
+                    {userEmail || 'Not available'}
                   </span>
                 </div>
+
+                {/* Sui Address */}
+                <div className="flex items-center justify-between py-3 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <Wallet className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Sui Address</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {authLoading ? (
+                      <span className="text-muted-foreground">Loading...</span>
+                    ) : suiAddress ? (
+                      <>
+                        <span className="font-mono text-sm text-foreground">
+                          {suiAddress.slice(0, 12)}...{suiAddress.slice(-8)}
+                        </span>
+                        <button
+                          onClick={copyAddress}
+                          className="p-1 rounded hover:bg-muted transition-colors"
+                        >
+                          {copied ? (
+                            <Check className="h-4 w-4 text-primary" />
+                          ) : (
+                            <Copy className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">Not provisioned</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Network */}
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <Shield className="h-5 w-5 text-muted-foreground" />
+                    <span className="text-muted-foreground">Network</span>
+                  </div>
+                  <span className="font-mono text-sm text-primary">Sui Testnet</span>
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
+                <p className="text-sm text-muted-foreground">
+                  <strong className="text-foreground">Auto-Provisioned Wallet:</strong> Your Sui address was automatically derived from your Google login using zkLogin. No private keys are stored - your wallet is non-custodial and deterministic.
+                </p>
               </div>
             </div>
 

@@ -1,17 +1,21 @@
-import { WalrusClient } from '@mysten/walrus';
 import { getFullnodeUrl } from '@mysten/sui/client';
 import { NETWORK } from '../constants';
 
 // Walrus upload relay for reduced request overhead
 const UPLOAD_RELAY_HOST = 'https://upload-relay.testnet.walrus.space';
 
-let walrusClientInstance: WalrusClient | null = null;
+// Store instance without typing to avoid import issues
+let walrusClientInstance: unknown = null;
 
 /**
- * Get a singleton WalrusClient instance
+ * Get a singleton WalrusClient instance - LAZY LOADED
+ * This prevents runtime crashes by only loading the SDK when needed
  */
-export function getWalrusClient(): WalrusClient {
+export async function getWalrusClient() {
   if (!walrusClientInstance) {
+    // Dynamic import to prevent top-level execution
+    const { WalrusClient } = await import('@mysten/walrus');
+    
     walrusClientInstance = new WalrusClient({
       network: NETWORK as 'testnet' | 'mainnet',
       suiRpcUrl: getFullnodeUrl(NETWORK),
@@ -34,11 +38,12 @@ export function resetWalrusClient(): void {
 }
 
 /**
- * Download a blob from Walrus using the SDK
+ * Download a blob from Walrus using the SDK - LAZY LOADED
  * Reading from Walrus works from browsers without CORS issues
  */
 export async function downloadFromWalrus(blobId: string): Promise<Uint8Array> {
-  const client = getWalrusClient();
+  const { WalrusClient } = await import('@mysten/walrus');
+  const client = await getWalrusClient() as InstanceType<typeof WalrusClient>;
   const data = await client.readBlob({ blobId });
   return data;
 }

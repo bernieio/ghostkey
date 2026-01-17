@@ -96,7 +96,11 @@ export default function Profile() {
                       <span className="text-muted-foreground">Loading...</span>
                     ) : suiAddress ? (
                       <>
-                        <span className="font-mono text-sm text-foreground">
+                        <span 
+                          onDoubleClick={copyAddress}
+                          title="Double-click to copy"
+                          className="font-mono text-sm text-foreground cursor-pointer select-none hover:text-primary transition-colors"
+                        >
                           {suiAddress.slice(0, 12)}...{suiAddress.slice(-8)}
                         </span>
                         <button

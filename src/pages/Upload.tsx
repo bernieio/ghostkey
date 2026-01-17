@@ -4,7 +4,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { FileUploader } from '@/components/FileUploader';
 import { generateSealId, encryptWithSeal } from '@/lib/seal';
-import { uploadToWalrus } from '@/lib/walrus';
+import { useWalrusUpload } from '@/hooks/useWalrus';
 import { suiToMist } from '@/lib/sui';
 import { 
   Upload as UploadIcon, 
@@ -23,6 +23,7 @@ type Step = 'select' | 'details' | 'encrypting' | 'uploading' | 'listing' | 'com
 export default function Upload() {
   const navigate = useNavigate();
   const { isAuthenticated, suiAddress } = useAuthContext();
+  const { upload: walrusUpload, isUploading: isWalrusUploading } = useWalrusUpload();
   
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
@@ -64,9 +65,9 @@ export default function Upload() {
       // Encrypt with Seal
       const encryptedContent = await encryptWithSeal(content, generatedSealId);
       
-      // Step 2: Upload to Walrus
+      // Step 2: Upload to Walrus using SDK (no CORS issues)
       setStep('uploading');
-      const generatedBlobId = await uploadToWalrus(encryptedContent);
+      const generatedBlobId = await walrusUpload(encryptedContent);
       setBlobId(generatedBlobId);
       
       // Step 3: Create listing on-chain (requires zkLogin transaction)

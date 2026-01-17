@@ -45,20 +45,35 @@ export function generateUserSalt(userId: string): string {
 }
 
 // Create or retrieve ephemeral keypair
+// CRITICAL: Store the Bech32 secret key string directly
 export function getOrCreateEphemeralKeypair(): { keypair: Ed25519Keypair; isNew: boolean } {
   const stored = localStorage.getItem(EPHEMERAL_KEYPAIR_KEY);
   
   if (stored) {
     try {
-      const secretKey = Uint8Array.from(JSON.parse(stored));
-      return { keypair: Ed25519Keypair.fromSecretKey(secretKey), isNew: false };
+      // The stored value is the Bech32 secret key string
+      // Ed25519Keypair.fromSecretKey accepts both Uint8Array and Bech32 string
+      const keypair = Ed25519Keypair.fromSecretKey(stored);
+      return { keypair, isNew: false };
     } catch (e) {
-      console.error('Failed to restore ephemeral keypair:', e);
+      console.error('Failed to restore ephemeral keypair, regenerating:', e);
+      localStorage.removeItem(EPHEMERAL_KEYPAIR_KEY);
+      return createNewEphemeralKeypair();
     }
   }
   
+  return createNewEphemeralKeypair();
+}
+
+// Helper to create and persist a new ephemeral keypair
+function createNewEphemeralKeypair(): { keypair: Ed25519Keypair; isNew: boolean } {
   const keypair = new Ed25519Keypair();
-  localStorage.setItem(EPHEMERAL_KEYPAIR_KEY, JSON.stringify(Array.from(keypair.getSecretKey())));
+  
+  // Store the Bech32 secret key string directly
+  // getSecretKey() returns the Bech32-encoded secret key
+  const bech32SecretKey = keypair.getSecretKey();
+  localStorage.setItem(EPHEMERAL_KEYPAIR_KEY, bech32SecretKey);
+  
   return { keypair, isNew: true };
 }
 

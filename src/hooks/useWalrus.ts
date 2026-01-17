@@ -8,12 +8,30 @@ interface UseWalrusUploadResult {
   clearError: () => void;
 }
 
+interface WalrusNewlyCreated {
+  newlyCreated: {
+    blobObject: {
+      blobId: string;
+    };
+  };
+}
+
+interface WalrusAlreadyCertified {
+  alreadyCertified: {
+    blobId: string;
+  };
+}
+
+type WalrusResponse = WalrusNewlyCreated | WalrusAlreadyCertified;
+
 /**
- * Hook for uploading blobs to Walrus using the SDK
- * Uses zkLogin-derived ephemeral keypair for signing
+ * Hook for uploading blobs to Walrus via Vercel serverless proxy
  * 
- * IMPORTANT: SDK is lazy-loaded only when upload() is called
- * This prevents runtime crashes from top-level imports
+ * Uses /api/walrus/upload to avoid:
+ * - Browser CORS issues
+ * - Testnet rate limits (429/503)
+ * 
+ * The proxy is stateless, non-custodial, and does not manage WAL or private keys.
  */
 export function useWalrusUpload(): UseWalrusUploadResult {
   const [isUploading, setIsUploading] = useState(false);
@@ -24,74 +42,103 @@ export function useWalrusUpload(): UseWalrusUploadResult {
   }, []);
 
   const upload = useCallback(
-    async (data: Uint8Array, epochs = 5): Promise<string> => {
+    async (data: Uint8Array, _epochs = 5): Promise<string> => {
       const zkState = getZkLoginState();
       
       if (!zkState.address) {
         throw new Error('Wallet not connected. Please sign in first.');
       }
 
-      if (!zkState.ephemeralKeypair) {
-        throw new Error('Ephemeral keypair not found. Please sign in again.');
-      }
-
       setIsUploading(true);
       setError(null);
 
-      try {
-        // LAZY LOAD: Import Walrus SDK only when upload is triggered
-        // This prevents top-level execution which can crash the app
-        const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
-        const { getFullnodeUrl } = await import('@mysten/sui/client');
-        const { NETWORK } = await import('@/lib/constants');
+      // Exponential backoff retry logic
+      const maxRetries = 3;
+      let lastError: Error | null = null;
 
-        // Create client instance at upload time
-        const client = new WalrusClient({
-          network: NETWORK as 'testnet' | 'mainnet',
-          suiRpcUrl: getFullnodeUrl(NETWORK),
-          uploadRelay: {
-            host: 'https://upload-relay.testnet.walrus.space',
-            sendTip: {
-              max: 10_000_000, // 0.01 SUI max tip
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          // Wait before retry (exponential backoff)
+          if (attempt > 0) {
+            const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+            console.log(`Retry attempt ${attempt + 1}, waiting ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+
+          // Call Vercel serverless proxy instead of Walrus directly
+          // This avoids CORS and reduces rate limiting
+          // Convert Uint8Array to ArrayBuffer for fetch body
+          const arrayBuffer = new ArrayBuffer(data.length);
+          new Uint8Array(arrayBuffer).set(data);
+          
+          const response = await fetch('/api/walrus/upload', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/octet-stream',
             },
-          },
-        });
-        
-        // Create a WalrusFile from the data
-        const file = WalrusFile.from({
-          contents: data,
-          identifier: `encrypted-content-${Date.now()}`,
-        });
-        
-        // Use the ephemeral keypair from zkLogin for signing
-        const signer = zkState.ephemeralKeypair;
+            body: arrayBuffer,
+          });
 
-        // Write files to Walrus using the SDK
-        const results = await client.writeFiles({
-          files: [file],
-          epochs,
-          deletable: false,
-          signer,
-        });
+          if (!response.ok) {
+            const errorText = await response.text();
+            
+            // Handle rate limiting - retry
+            if (response.status === 429 || response.status === 503) {
+              lastError = new Error(`Walrus rate limited (${response.status}). Retrying...`);
+              console.warn(lastError.message);
+              continue;
+            }
+            
+            throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+          }
 
-        if (!results || results.length === 0) {
-          throw new Error('No blob ID returned from Walrus');
+          const result: WalrusResponse = await response.json();
+          
+          // Extract blobId from response
+          let blobId: string;
+          if ('newlyCreated' in result) {
+            blobId = result.newlyCreated.blobObject.blobId;
+          } else if ('alreadyCertified' in result) {
+            blobId = result.alreadyCertified.blobId;
+          } else {
+            throw new Error('Unexpected Walrus response format');
+          }
+
+          console.log('Walrus upload successful via proxy:', blobId);
+          return blobId;
+          
+        } catch (e: unknown) {
+          lastError = e instanceof Error ? e : new Error('Unknown error');
+          
+          // Don't retry on non-retryable errors
+          if (!lastError.message.includes('rate limited') && 
+              !lastError.message.includes('429') && 
+              !lastError.message.includes('503')) {
+            break;
+          }
         }
-
-        const blobId = results[0].blobId;
-        console.log('Walrus SDK upload successful:', blobId);
-        return blobId;
-      } catch (e: unknown) {
-        const errorMessage = e instanceof Error ? e.message : 'Walrus upload failed';
-        console.error('Walrus upload error:', e);
-        setError(errorMessage);
-        throw e;
-      } finally {
-        setIsUploading(false);
       }
+
+      // All retries exhausted
+      const errorMessage = lastError?.message || 'Walrus upload failed after retries';
+      console.error('Walrus upload error:', lastError);
+      setError(errorMessage);
+      throw lastError || new Error(errorMessage);
     },
     []
   );
 
-  return { upload, isUploading, error, clearError };
+  // Cleanup on unmount
+  const wrappedUpload = useCallback(
+    async (data: Uint8Array, epochs?: number): Promise<string> => {
+      try {
+        return await upload(data, epochs);
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [upload]
+  );
+
+  return { upload: wrappedUpload, isUploading, error, clearError };
 }

@@ -1,6 +1,4 @@
 import { useCallback, useState } from 'react';
-import { WalrusFile } from '@mysten/walrus';
-import { getWalrusClient } from '@/lib/walrus/client';
 import { getZkLoginState } from '@/lib/zklogin';
 
 interface UseWalrusUploadResult {
@@ -13,6 +11,9 @@ interface UseWalrusUploadResult {
 /**
  * Hook for uploading blobs to Walrus using the SDK
  * Uses zkLogin-derived ephemeral keypair for signing
+ * 
+ * IMPORTANT: SDK is lazy-loaded only when upload() is called
+ * This prevents runtime crashes from top-level imports
  */
 export function useWalrusUpload(): UseWalrusUploadResult {
   const [isUploading, setIsUploading] = useState(false);
@@ -38,7 +39,23 @@ export function useWalrusUpload(): UseWalrusUploadResult {
       setError(null);
 
       try {
-        const client = getWalrusClient();
+        // LAZY LOAD: Import Walrus SDK only when upload is triggered
+        // This prevents top-level execution which can crash the app
+        const { WalrusClient, WalrusFile } = await import('@mysten/walrus');
+        const { getFullnodeUrl } = await import('@mysten/sui/client');
+        const { NETWORK } = await import('@/lib/constants');
+
+        // Create client instance at upload time
+        const client = new WalrusClient({
+          network: NETWORK as 'testnet' | 'mainnet',
+          suiRpcUrl: getFullnodeUrl(NETWORK),
+          uploadRelay: {
+            host: 'https://upload-relay.testnet.walrus.space',
+            sendTip: {
+              max: 10_000_000, // 0.01 SUI max tip
+            },
+          },
+        });
         
         // Create a WalrusFile from the data
         const file = WalrusFile.from({
@@ -50,7 +67,6 @@ export function useWalrusUpload(): UseWalrusUploadResult {
         const signer = zkState.ephemeralKeypair;
 
         // Write files to Walrus using the SDK
-        // WalrusClient has writeFiles method directly (not under .walrus)
         const results = await client.writeFiles({
           files: [file],
           epochs,
@@ -67,6 +83,7 @@ export function useWalrusUpload(): UseWalrusUploadResult {
         return blobId;
       } catch (e: unknown) {
         const errorMessage = e instanceof Error ? e.message : 'Walrus upload failed';
+        console.error('Walrus upload error:', e);
         setError(errorMessage);
         throw e;
       } finally {
